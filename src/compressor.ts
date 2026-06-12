@@ -391,8 +391,14 @@ async function callOllama(spec: ToolSpec, userContent: string): Promise<Json> {
     if (data.error) throw new Error(`Ollama error: ${data.error}`);
     const content = data.message?.content?.trim();
     if (!content) throw new Error("Ollama returned empty content");
+    // Lenient parse: strip ```json fences and isolate the outermost object,
+    // in case the model wraps the JSON in prose despite json mode.
+    const cleaned = content.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    const candidate = start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned;
     try {
-      return JSON.parse(content) as Json;
+      return JSON.parse(candidate) as Json;
     } catch {
       throw new Error(`model returned non-JSON: ${content.slice(0, 200)}`);
     }
@@ -416,11 +422,17 @@ export async function compress(
   rawContent: string,
 ): Promise<CompressResult> {
   const spec = TOOL_SPECS[toolName] ?? TOOL_SPECS._default;
-  const input = rawContent.slice(0, config.maxInputChars);
-  const truncatedNote =
-    rawContent.length > config.maxInputChars
-      ? `\n\n[note: input truncated from ${rawContent.length} to ${config.maxInputChars} chars before compression]`
-      : "";
+  const truncated = rawContent.length > config.maxInputChars;
+  // Keep head AND tail: errors and failed requests frequently appear at the end
+  // of a dump, so naive head-only truncation would silently drop them.
+  const input = truncated
+    ? rawContent.slice(0, Math.floor(config.maxInputChars * 0.6)) +
+      "\n\n…[middle truncated]…\n\n" +
+      rawContent.slice(-Math.floor(config.maxInputChars * 0.4))
+    : rawContent;
+  const truncatedNote = truncated
+    ? `\n\n[note: input truncated from ${rawContent.length} chars (kept head+tail); raise OLLAMA_NUM_CTX for full coverage]`
+    : "";
 
   const started = Date.now();
   try {

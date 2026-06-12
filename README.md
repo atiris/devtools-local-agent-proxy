@@ -105,7 +105,15 @@ OLLAMA_MODEL=qwen3.5:9b npm run smoke
 
 # 2. Full MCP protocol handshake through chrome-devtools-mcp:
 node scripts/handshake.mjs
+
+# 3. Full round-trip through a REAL browser (opens Chrome, needs the model):
+OLLAMA_MODEL=qwen3.5:9b node scripts/e2e-browser.mjs
 ```
+
+The browser e2e drives Chrome to log 600+ console messages plus a real error,
+then confirms `list_console_messages` comes back as a compressed digest with the
+error preserved. Measured: a 42 KB / ~10.5k-token live dump → ~73 tokens
+(**99.3% reduction**), error and warning intact.
 
 ## Use as a Claude Code plugin
 
@@ -190,7 +198,8 @@ src/compressor.ts            Tool-aware, schema-constrained Ollama compression
 src/cache.ts                 TTL + size-bounded LRU cache
 src/config.ts                Env-driven configuration
 scripts/smoke.mjs            Offline compression test (no browser)
-scripts/handshake.mjs        End-to-end MCP protocol test
+scripts/handshake.mjs        MCP protocol forwarding test
+scripts/e2e-browser.mjs      Full round-trip test through real Chrome
 ```
 
 ## License

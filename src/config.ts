@@ -41,6 +41,18 @@ const DEFAULT_COMPRESSIBLE_TOOLS = [
   "lighthouse_audit",
 ];
 
+const numCtx = num(process.env.OLLAMA_NUM_CTX, 24576);
+
+/**
+ * Chars we dare feed the model. Dense, repetitive DevTools output tokenizes at
+ * ~2.4 chars/token (far below the naive 4), so a char budget computed from
+ * num_ctx must assume the worst case or the prompt silently overflows the
+ * window. We reserve ~3500 tokens for the system/few-shot/output and assume
+ * 2.2 chars/token. Anything beyond this is head+tail truncated (see compressor)
+ * so trailing errors are never lost.
+ */
+const derivedMaxInputChars = Math.max(8000, Math.floor((numCtx - 3500) * 2.2));
+
 export const config = {
   // --- Local model (Ollama native API) ---
   ollamaBaseUrl: (
@@ -58,11 +70,11 @@ export const config = {
   // Model context window (num_ctx). CRITICAL: Ollama defaults to only 4096
   // tokens — a large DevTools dump fills that entirely, leaving no room to
   // generate (and silently truncating the input, which causes missed errors
-  // and hallucinations). Must comfortably exceed input + thinking + output.
-  numCtx: num(process.env.OLLAMA_NUM_CTX, 16384),
-  // Hard cap on characters fed to the local model. Kept below numCtx (≈ chars/4)
-  // so input + reasoning + digest all fit without truncation.
-  maxInputChars: num(process.env.MAX_INPUT_CHARS, 40000),
+  // and hallucinations). Must comfortably exceed input + output. Lower it if
+  // your GPU is tight on VRAM; raise it to handle bigger dumps.
+  numCtx,
+  // Hard cap on chars sent to the model, derived from numCtx unless overridden.
+  maxInputChars: num(process.env.MAX_INPUT_CHARS, derivedMaxInputChars),
   // Sampling temperature for the extraction model (low = deterministic).
   temperature: Number.parseFloat(process.env.OLLAMA_TEMPERATURE ?? "0"),
   // Disable the model's "thinking" phase. ON by default: thinking models
