@@ -349,11 +349,23 @@ async function callOllama(spec: ToolSpec, userContent: string): Promise<Json> {
   const messages: { role: string; content: string }[] = [
     { role: "system", content: spec.system },
   ];
-  for (const shot of spec.shots) {
-    messages.push({ role: "user", content: shot.user });
-    messages.push({ role: "assistant", content: JSON.stringify(shot.assistant) });
+  if (config.useFewShot) {
+    for (const shot of spec.shots) {
+      messages.push({ role: "user", content: shot.user });
+      messages.push({ role: "assistant", content: JSON.stringify(shot.assistant) });
+    }
   }
   messages.push({ role: "user", content: userContent });
+
+  // Output constraint. "schema" gives the strongest guarantee but some
+  // thinking models only honor it with thinking ON; "json" is a looser mode
+  // that pairs with thinking OFF for speed; "off" relies on the prompt alone.
+  const format =
+    config.formatMode === "schema"
+      ? spec.schema
+      : config.formatMode === "json"
+        ? "json"
+        : undefined;
 
   try {
     const res = await fetch(`${config.ollamaBaseUrl}/api/chat`, {
@@ -364,11 +376,12 @@ async function callOllama(spec: ToolSpec, userContent: string): Promise<Json> {
         model: config.ollamaModel,
         stream: false,
         think: config.disableThinking ? false : undefined,
-        format: spec.schema, // grammar-constrained structured output
+        format,
         messages,
         options: {
           temperature: config.temperature,
           num_predict: config.maxCompressedTokens,
+          num_ctx: config.numCtx,
         },
       }),
     });

@@ -51,14 +51,34 @@ export const config = {
   // --- Compression behaviour ---
   // Responses estimated larger than this (tokens ≈ chars/4) get compressed.
   compressionThresholdTokens: num(process.env.COMPRESSION_THRESHOLD_TOKENS, 2000),
-  // Upper bound on the digest the local model produces.
-  maxCompressedTokens: num(process.env.MAX_COMPRESSED_TOKENS, 600),
-  // Hard cap on characters fed to the local model (protects its context window).
-  maxInputChars: num(process.env.MAX_INPUT_CHARS, 80000),
+  // Total generation budget (num_predict). For thinking models this must also
+  // cover the hidden reasoning phase, so it is generous; the rendered digest
+  // itself stays tiny regardless.
+  maxCompressedTokens: num(process.env.MAX_COMPRESSED_TOKENS, 2000),
+  // Model context window (num_ctx). CRITICAL: Ollama defaults to only 4096
+  // tokens — a large DevTools dump fills that entirely, leaving no room to
+  // generate (and silently truncating the input, which causes missed errors
+  // and hallucinations). Must comfortably exceed input + thinking + output.
+  numCtx: num(process.env.OLLAMA_NUM_CTX, 16384),
+  // Hard cap on characters fed to the local model. Kept below numCtx (≈ chars/4)
+  // so input + reasoning + digest all fit without truncation.
+  maxInputChars: num(process.env.MAX_INPUT_CHARS, 40000),
   // Sampling temperature for the extraction model (low = deterministic).
   temperature: Number.parseFloat(process.env.OLLAMA_TEMPERATURE ?? "0"),
-  // Disable the model's "thinking" phase for fast extraction (qwen3 family).
+  // Disable the model's "thinking" phase. ON by default: thinking models
+  // (qwen3.5:9b) "over-think" bulk extraction — reasoning about every log line
+  // for 100+ seconds and exhausting the generation budget before emitting an
+  // answer. Fast extraction wants thinking OFF.
   disableThinking: bool(process.env.DISABLE_THINKING, true),
+  // How to constrain output: "json" (loose JSON mode — most portable, works
+  // with thinking OFF), "schema" (full JSON schema — strongest, but qwen3.5
+  // only honors it with thinking ON), or "off" (prompt only).
+  formatMode: (process.env.OLLAMA_FORMAT_MODE as "schema" | "json" | "off") ?? "json",
+  // Include a worked example per tool. ON by default: with thinking OFF and
+  // loose JSON mode, the example is what pins the exact output shape. (Turn OFF
+  // only if you switch to schema mode WITH a thinking model, where examples
+  // bloat the reasoning budget.)
+  useFewShot: bool(process.env.USE_FEW_SHOT, true),
   // Request timeout for the local model in ms.
   ollamaTimeoutMs: num(process.env.OLLAMA_TIMEOUT_MS, 120000),
 

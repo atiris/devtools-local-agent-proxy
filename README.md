@@ -27,19 +27,31 @@ chrome-devtools-mcp  (upstream, unchanged)
 Chrome
 ```
 
-## Why structured output (the key design choice)
+## Why JSON output + the settings that actually matter
 
-Small local instruct models (qwen3:8b, qwen2.5-coder, llama3.1) *ignore* prose
-instructions like "be terse, don't explain" and turn an extraction task into a
-help-desk essay — which would make responses **bigger**, not smaller. This
-proxy instead passes a **JSON schema** per tool in Ollama's `format` field, so
-generation is grammar-constrained and the model physically cannot ramble. The
-JSON is then rendered back to compact text for Claude. A one-shot example per
-tool steers *which* facts to keep.
+Small local instruct models (qwen3:8b, qwen2.5-coder, llama3.1, qwen3.5:9b)
+*ignore* prose instructions like "be terse, don't explain" and turn an
+extraction task into a help-desk essay — which would make responses **bigger**,
+not smaller. This proxy instead forces **JSON output** (Ollama `format`) and
+renders the parsed JSON back to compact text. A one-shot example per tool pins
+the exact shape and steers *which* facts to keep.
 
-Measured on a ~18 KB console/network dump with qwen3:8b: **~98% token
-reduction** (4400 → ~80 tokens), ~3–4 s per call. A stronger model such as
-`qwen3.5:9b` improves extraction fidelity further.
+Two non-obvious settings make or break this, both learned the hard way and now
+defaulted correctly:
+
+- **`num_ctx` (context window).** Ollama defaults to **4096 tokens**. A single
+  DevTools dump fills that entirely, so the model has no room to answer *and
+  the input is silently truncated* — which causes missed errors and outright
+  hallucinations. The proxy sets `num_ctx=16384` so the whole dump plus the
+  digest fit.
+- **Thinking OFF.** "Thinking" models like `qwen3.5:9b` over-think bulk
+  extraction — reasoning about every log line for 100+ seconds and exhausting
+  the generation budget before producing an answer. The proxy disables thinking
+  for fast, faithful extraction.
+
+Measured on a ~18 KB console/network dump with **qwen3.5:9b** (default config):
+**~98% token reduction** (4400 → ~80 tokens), ~4 s per call, all errors and
+failed/slow requests preserved verbatim with no hallucination.
 
 ## What gets compressed (and what doesn't)
 
@@ -131,11 +143,14 @@ Point any MCP client at the built proxy:
 | --- | --- | --- |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama host |
 | `OLLAMA_MODEL` | `qwen3.5:9b` | Compression model |
+| `OLLAMA_NUM_CTX` | `16384` | **Context window — must exceed input+output or the dump is truncated.** Raise for very large dumps (uses more VRAM) |
 | `COMPRESSION_THRESHOLD_TOKENS` | `2000` | Responses larger than this (≈ chars/4) get compressed |
-| `MAX_COMPRESSED_TOKENS` | `600` | Upper bound on the digest (`num_predict`) |
-| `MAX_INPUT_CHARS` | `80000` | Hard cap on chars sent to the model |
+| `MAX_COMPRESSED_TOKENS` | `2000` | Generation budget (`num_predict`); the digest itself stays tiny |
+| `MAX_INPUT_CHARS` | `40000` | Hard cap on chars sent to the model (kept below `num_ctx`) |
 | `OLLAMA_TEMPERATURE` | `0` | Sampling temperature (0 = faithful) |
-| `DISABLE_THINKING` | `true` | Disable the model's thinking phase (qwen3 family) |
+| `DISABLE_THINKING` | `true` | Disable the model's thinking phase (recommended for extraction) |
+| `OLLAMA_FORMAT_MODE` | `json` | Output constraint: `json`, `schema`, or `off` |
+| `USE_FEW_SHOT` | `true` | Prepend a worked example per tool (pins the JSON shape) |
 | `OLLAMA_TIMEOUT_MS` | `120000` | Per-call model timeout |
 | `COMPRESSIBLE_TOOLS` | *(diagnostic set above)* | Comma-separated tools to compress |
 | `ALLOWED_TOOLS` | *(all)* | If set, only these tools are exposed — cuts the persistent tool-schema cost |
