@@ -25,9 +25,24 @@ Addional tooling can be enabled by providing the following flags:
 
 ### Efficient data retrieval
 
-- Use `filePath` parameter for large outputs (screenshots, snapshots, traces)
-- Use pagination (`pageIdx`, `pageSize`) and filtering (`types`) to minimize data
-- Set `includeSnapshot: false` on input actions unless you need updated page state
+Diagnostic reads (`list_console_messages`, `list_network_requests`) return **every**
+message/request by default, which floods the context window. Always narrow the
+request to what you actually need:
+
+- **`list_console_messages`**: default to `types: ["error", "warn"]` when hunting
+  for problems. Only widen to `["log", "info", ...]` if you specifically need them.
+- **`list_network_requests`**: pass `resourceTypes` (e.g. `["xhr", "fetch"]`) to
+  skip images/fonts/stylesheets when you only care about API traffic.
+- **Paginate** large result sets with `pageSize` (e.g. `pageSize: 50`) + `pageIdx`
+  instead of pulling everything in one call.
+- Use the `filePath`-style params for large outputs (screenshots, snapshots,
+  traces) and `get_network_request`'s `responseFilePath` to offload big bodies to
+  disk rather than inlining them.
+- Set `includeSnapshot: false` on input actions unless you need updated page state.
+
+> Note: `list_network_requests` can filter by `resourceTypes` but **not** by HTTP
+> status or latency. To find only failed/slow requests, fetch the relevant
+> `resourceTypes` and inspect `status`/timing in the result.
 
 ### Tool selection
 

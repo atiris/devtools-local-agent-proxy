@@ -53,7 +53,12 @@ cp -r "$SRC/." ./skills/
 
 Keep this list current so re-vendoring doesn't silently clobber local edits:
 
-- _(none yet — skills are copied verbatim from upstream v1.2.0)_
+- **`chrome-devtools/SKILL.md`** — strengthened the "Efficient data retrieval"
+  section to direct Claude to default to `types: ["error","warn"]` on
+  `list_console_messages`, use `resourceTypes` + pagination on
+  `list_network_requests`, and noted that status/latency are not filterable
+  natively. When re-vendoring, re-apply this edit (or fold it into upstream's
+  version if they expand that section).
 
 If you customize a skill (e.g. teaching `troubleshooting` about this proxy's
 Ollama layer and `dist/proxy.js`), note it here so a future `cp -r` doesn't
