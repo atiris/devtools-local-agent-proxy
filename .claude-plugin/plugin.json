@@ -1,0 +1,23 @@
+{
+  "name": "devtools-local-agent-proxy",
+  "version": "0.1.0",
+  "description": "Wraps chrome-devtools-mcp and compresses large tool responses with a local Ollama model, keeping Claude Code's context window small during browser e2e testing.",
+  "author": {
+    "name": "atiris",
+    "email": "atiris@gmail.com"
+  },
+  "keywords": ["chrome-devtools", "mcp", "ollama", "token-compression", "e2e"],
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/proxy.js"],
+      "env": {
+        "OLLAMA_BASE_URL": "http://localhost:11434",
+        "OLLAMA_MODEL": "qwen3.5:9b",
+        "COMPRESSION_THRESHOLD_TOKENS": "2000",
+        "MAX_COMPRESSED_TOKENS": "800",
+        "CACHE_TTL_MS": "300000"
+      }
+    }
+  }
+}

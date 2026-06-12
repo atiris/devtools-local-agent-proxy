@@ -1,0 +1,37 @@
+{
+  "name": "devtools-local-agent-proxy",
+  "version": "0.1.0",
+  "description": "A token-saving MCP proxy that wraps chrome-devtools-mcp and compresses large tool responses with a local Ollama model before they reach Claude Code.",
+  "type": "module",
+  "bin": {
+    "devtools-local-agent-proxy": "dist/proxy.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/proxy.js",
+    "dev": "tsx src/proxy.ts",
+    "prepare": "tsc",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "claude-code",
+    "chrome-devtools",
+    "ollama",
+    "proxy",
+    "token-compression",
+    "context-window"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
