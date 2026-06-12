@@ -12,7 +12,7 @@ digest instead — so Claude's context window stays small.
 Claude Code only ever sees this proxy. The tool names and schemas are identical
 to the upstream server, so nothing in your workflow changes.
 
-```
+```txt
 Claude Code
    │  (identical tool names)
    ▼
@@ -58,14 +58,14 @@ failed/slow requests preserved verbatim with no hallucination.
 Only **read-only diagnostic tools** are compressed, because their raw output is
 noisy and a digest is strictly more useful:
 
-| Compressed by default          | Extracted |
-| ------------------------------ | --------- |
+| Compressed by default          | Extracted                                     |
+| ------------------------------ | --------------------------------------------- |
 | `list_console_messages`        | errors + warnings verbatim, logs/info counted |
-| `list_network_requests`        | 4xx/5xx + slow (>1s) requests, rest counted |
-| `get_network_request`          | method/url/status/content-type + error body |
-| `performance_stop_trace`       | Core Web Vitals + slowest tasks |
-| `performance_analyze_insight`  | name / impact / cause / fix |
-| `lighthouse_audit`             | category scores + failing audits only |
+| `list_network_requests`        | 4xx/5xx + slow (>1s) requests, rest counted   |
+| `get_network_request`          | method/url/status/content-type + error body   |
+| `performance_stop_trace`       | Core Web Vitals + slowest tasks               |
+| `performance_analyze_insight`  | name / impact / cause / fix                   |
+| `lighthouse_audit`             | category scores + failing audits only         |
 
 **Interaction-critical tools are never compressed** (`take_snapshot`,
 `evaluate_script`, `take_screenshot`, `click`, `fill`, …). Their output carries
@@ -81,9 +81,11 @@ The compressible set is fully configurable (`COMPRESSIBLE_TOOLS`).
 - **Node.js 20+**
 - **[Ollama](https://ollama.com)** running locally
 - A compression model pulled, e.g.:
+  
   ```bash
   ollama pull qwen3.5:9b
   ```
+
   Any Ollama model that supports structured output works (`qwen3:8b`,
   `qwen2.5-coder:7b`, `llama3.1:8b`, …). Stronger models extract more
   faithfully; pick one that fits your VRAM.
@@ -180,18 +182,14 @@ ALLOWED_TOOLS="navigate_page,take_snapshot,click,fill,list_console_messages,list
 
 ## Safety & correctness notes
 
-- Failed upstream calls (`isError`) are never compressed — you always see the
-  real error.
-- On any model/Ollama failure the proxy returns the **original** response by
-  default, so a flaky local model can never break a test run.
-- Compressed results are cached by `tool + args` with a short TTL to avoid
-  re-spending model time on repeated diagnostic calls in an agent loop.
-- A digest is a lossy summary. Each one is labeled and tells Claude it can
-  re-run the tool for raw data if needed.
+- Failed upstream calls (`isError`) are never compressed — you always see the real error.
+- On any model/Ollama failure the proxy returns the **original** response by default, so a flaky local model can never break a test run.
+- Compressed results are cached by `tool + args` with a short TTL to avoid re-spending model time on repeated diagnostic calls in an agent loop.
+- A digest is a lossy summary. Each one is labeled and tells Claude it can re-run the tool for raw data if needed.
 
 ## Project layout
 
-```
+```txt
 .claude-plugin/plugin.json   Claude Code plugin manifest (registers the MCP server)
 src/proxy.ts                 MCP server ⇄ upstream client; interception logic
 src/compressor.ts            Tool-aware, schema-constrained Ollama compression
