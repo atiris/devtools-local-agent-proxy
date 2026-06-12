@@ -1,0 +1,14 @@
+{
+  "name": "atiris-local",
+  "owner": {
+    "name": "atiris",
+    "email": "atiris@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "devtools-local-agent-proxy",
+      "source": "./",
+      "description": "Wraps chrome-devtools-mcp and compresses large tool responses with a local Ollama model, keeping Claude Code's context window small during browser e2e testing."
+    }
+  ]
+}

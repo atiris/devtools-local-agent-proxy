@@ -112,6 +112,12 @@ node scripts/handshake.mjs
 OLLAMA_MODEL=qwen3.5:9b node scripts/e2e-browser.mjs
 ```
 
+```ps
+set OLLAMA_MODEL=qwen3.5:9b
+npm run smoke
+node scripts/handshake.mjs
+```
+
 The browser e2e drives Chrome to log 600+ console messages plus a real error,
 then confirms `list_console_messages` comes back as a compressed digest with the
 error preserved. Measured: a 42 KB / ~10.5k-token live dump → ~73 tokens
@@ -120,12 +126,76 @@ error preserved. Measured: a 42 KB / ~10.5k-token live dump → ~73 tokens
 ## Use as a Claude Code plugin
 
 The plugin ships `.claude-plugin/plugin.json`, which registers the proxy as the
-`chrome-devtools` MCP server. After adding the plugin to Claude Code (via your
-marketplace or a local plugin path), **disable the stock `chrome-devtools-mcp`
-plugin** so the names don't collide — this proxy replaces it.
+`chrome-devtools` MCP server. It replaces the stock `chrome-devtools-mcp`
+plugin — running both at the same time causes conflicts and disables compression,
+so you must disable the official one after installing this proxy.
 
-Then restart Claude Code and run `/context` before and after a browser session
-to see the drop.
+### Step-by-step setup
+
+**1. Build the proxy** (if you haven't yet):
+
+```bash
+cd /path/to/devtools-local-agent-proxy
+npm install   # also runs tsc via the "prepare" script
+```
+
+**2. Register the local marketplace** (once per machine). In any Claude Code
+chat input:
+
+```
+/plugin marketplace add /path/to/devtools-local-agent-proxy
+```
+
+On Windows use the full path, e.g.:
+
+```
+/plugin marketplace add C:\Users\you\projects\devtools-local-agent-proxy
+```
+
+This registers the directory as a marketplace named `atiris-local` (the name
+defined in `.claude-plugin/marketplace.json`).
+
+**3. Install the plugin:**
+
+```
+/plugin install devtools-local-agent-proxy@atiris-local
+```
+
+**4. Disable the official chrome-devtools-mcp plugin:**
+
+Open Claude Code Settings → Plugins and toggle off
+`chrome-devtools-mcp@claude-plugins-official`, or set it to `false` directly in
+`~/.claude/settings.json`:
+
+```json
+"enabledPlugins": {
+  "chrome-devtools-mcp@claude-plugins-official": false,
+  "devtools-local-agent-proxy@atiris-local": true
+}
+```
+
+**5. Restart Claude Code.** The proxy takes over the `chrome-devtools` tool
+namespace. All tool names stay identical — nothing else in your workflow changes.
+
+Run `/context` before and after a heavy browser session to see the token
+reduction.
+
+### Bundled skills
+
+This plugin also vendors the Chrome DevTools **skills** (`chrome-devtools`,
+`a11y-debugging`, `debug-optimize-lcp`, `memory-leak-debugging`,
+`chrome-devtools-cli`, `troubleshooting`) from upstream, so it is fully
+self-contained. After installing this plugin you can **disable
+`chrome-devtools-mcp@claude-plugins-official` entirely** (step 4 above) — both
+its MCP server *and* its skills are replaced by this plugin.
+
+The skills reference tools by bare name (`take_snapshot`, `list_pages`, …), so
+they work transparently against the proxied `chrome-devtools` server.
+
+> ℹ️ The skills are copied from upstream and licensed under Apache-2.0. See
+> [`skills/README.md`](skills/README.md) for **how to keep them in sync** when
+> `chrome-devtools-mcp` updates, and the repo-root [`NOTICE`](NOTICE) for
+> attribution.
 
 ### Or wire it up manually
 
@@ -162,6 +232,7 @@ Point any MCP client at the built proxy:
 | `OLLAMA_FORMAT_MODE` | `json` | Output constraint: `json`, `schema`, or `off` |
 | `USE_FEW_SHOT` | `true` | Prepend a worked example per tool (pins the JSON shape) |
 | `OLLAMA_TIMEOUT_MS` | `120000` | Per-call model timeout |
+| `OLLAMA_KEEP_ALIVE` | `10m` | How long Ollama keeps the model in memory after the last call. Use `-1` to never unload, `5m`, `1h`, etc. Default of 10 min avoids cold-start latency mid-session. |
 | `COMPRESSIBLE_TOOLS` | *(diagnostic set above)* | Comma-separated tools to compress |
 | `ALLOWED_TOOLS` | *(all)* | If set, only these tools are exposed — cuts the persistent tool-schema cost |
 | `CACHE_TTL_MS` | `300000` | Cache lifetime for compressed results |
@@ -190,16 +261,23 @@ ALLOWED_TOOLS="navigate_page,take_snapshot,click,fill,list_console_messages,list
 ## Project layout
 
 ```txt
-.claude-plugin/plugin.json   Claude Code plugin manifest (registers the MCP server)
-src/proxy.ts                 MCP server ⇄ upstream client; interception logic
-src/compressor.ts            Tool-aware, schema-constrained Ollama compression
-src/cache.ts                 TTL + size-bounded LRU cache
-src/config.ts                Env-driven configuration
-scripts/smoke.mjs            Offline compression test (no browser)
-scripts/handshake.mjs        MCP protocol forwarding test
-scripts/e2e-browser.mjs      Full round-trip test through real Chrome
+.claude-plugin/plugin.json      Claude Code plugin manifest (registers the MCP server)
+.claude-plugin/marketplace.json  Local marketplace manifest (enables /plugin install)
+src/proxy.ts                    MCP server ⇄ upstream client; interception logic
+src/compressor.ts               Tool-aware, schema-constrained Ollama compression
+src/cache.ts                    TTL + size-bounded LRU cache
+src/config.ts                   Env-driven configuration
+skills/                         Vendored Chrome DevTools skills (Apache-2.0) + sync guide
+scripts/smoke.mjs               Offline compression test (no browser)
+scripts/handshake.mjs           MCP protocol forwarding test
+scripts/e2e-browser.mjs         Full round-trip test through real Chrome
 ```
 
 ## License
 
-MIT
+Licensed under the [Apache License, Version 2.0](LICENSE).
+
+This project bundles skills derived from
+[`chrome-devtools-mcp`](https://github.com/ChromeDevTools/chrome-devtools-mcp)
+(Copyright Google LLC, Apache-2.0). See [`NOTICE`](NOTICE) for attribution and
+[`skills/README.md`](skills/README.md) for how to keep them in sync.
