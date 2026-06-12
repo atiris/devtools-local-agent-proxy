@@ -93,6 +93,11 @@ export const config = {
   useFewShot: bool(process.env.USE_FEW_SHOT, true),
   // Request timeout for the local model in ms.
   ollamaTimeoutMs: num(process.env.OLLAMA_TIMEOUT_MS, 120000),
+  // How long Ollama keeps the model loaded after the last request. Use "-1" to
+  // keep it loaded indefinitely, "10m" for 10 minutes, etc. Default keeps the
+  // model warm for 10 minutes so repeated compression calls don't pay cold-start
+  // cost (Ollama's default of 5 min often expires mid-session).
+  ollamaKeepAlive: process.env.OLLAMA_KEEP_ALIVE ?? "10m",
 
   // --- Which tools to compress / expose ---
   compressibleTools: new Set(

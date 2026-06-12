@@ -378,6 +378,7 @@ async function callOllama(spec: ToolSpec, userContent: string): Promise<Json> {
         think: config.disableThinking ? false : undefined,
         format,
         messages,
+        keep_alive: config.ollamaKeepAlive,
         options: {
           temperature: config.temperature,
           num_predict: config.maxCompressedTokens,
