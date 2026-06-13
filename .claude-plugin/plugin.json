@@ -1,7 +1,7 @@
 {
   "name": "devtools-local-agent-proxy",
-  "version": "0.1.0",
-  "description": "Wraps chrome-devtools-mcp and compresses large tool responses with a local Ollama model, keeping Claude Code's context window small during browser e2e testing.",
+  "version": "0.2.0",
+  "description": "Wraps chrome-devtools-mcp: compresses large diagnostic dumps with a local Ollama model and returns focused, downscaled WebP screenshots, keeping Claude Code's context window small during browser e2e testing.",
   "author": {
     "name": "atiris",
     "email": "atiris@gmail.com"

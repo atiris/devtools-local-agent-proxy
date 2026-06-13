@@ -44,11 +44,44 @@ request to what you actually need:
 > status or latency. To find only failed/slow requests, fetch the relevant
 > `resourceTypes` and inspect `status`/timing in the result.
 
+### Token-Saving Protocol (strict)
+
+Images and raw dumps are the most expensive thing you can put in the context
+window. Follow these rules unless the user explicitly overrides them:
+
+1. **Prefer snapshots over screenshots.** Use `take_snapshot` (text-based
+   accessibility tree with element `uid`s) to find elements and verify state.
+   Do **not** use `take_screenshot` to locate elements or read text — only for
+   genuine *visual* questions (layout, colour, rendering).
+2. **Keep `includeSnapshot: false`** on `click`, `fill`, `fill_form`, etc.
+   unless you expect a navigation or a major DOM/layout change. Re-snapshot
+   explicitly only when you actually need the new state.
+3. **Screenshot last, and focused.** Take a visual screenshot only when asked
+   for visual confirmation or at the end as a final check — never after every
+   action.
+
 ### Tool selection
 
 - **Automation/interaction**: `take_snapshot` (text-based, faster, better for automation)
 - **Visual inspection**: `take_screenshot` (when user needs to see visual state)
 - **Additional details**: `evaluate_script` for data not in accessibility tree
+
+### Focused screenshots (`take_screenshot`)
+
+Claude is billed for images by pixel area, so always capture the **smallest
+useful region at the lowest useful resolution**. This proxy requires a focus
+`region` and returns a cropped, downscaled **WebP**:
+
+- **`region`** (required): `full`, `top`/`bottom`/`left`/`right` (that half),
+  `center` (central quarter), or `top-strip`/`bottom-strip` (top/bottom 20% band
+  — use for headers/footers). Pick the smallest region that answers the question.
+- **`maxWidth`** (default 1024): lower it (e.g. `512`) when you only need to
+  confirm a layout — fewer pixels means fewer tokens.
+- **`quality`** (default 50): WebP quality; trims file size/latency, not tokens.
+
+Examples: checking a sticky header → `region: "top-strip", maxWidth: 768`;
+verifying a centred modal → `region: "center"`; a quick full-page sanity check →
+`region: "full", maxWidth: 512`.
 
 ### Parallel execution
 

@@ -3,11 +3,18 @@
 A Claude Code **plugin** that keeps token usage low during browser e2e testing.
 
 It wraps [`chrome-devtools-mcp`](https://github.com/ChromeDevTools/chrome-devtools-mcp)
-with a transparent MCP proxy. The proxy forwards every tool call to the real
-server unchanged, but when a **read-only diagnostic tool** returns a large dump
-(console logs, network traces, performance data, Lighthouse audits) it routes
-the response through a **local Ollama model** and returns a compact, structured
-digest instead — so Claude's context window stays small.
+with a transparent MCP proxy. It cuts token usage two ways:
+
+1. **Diagnostic dumps → local digest.** When a **read-only diagnostic tool**
+   returns a large dump (console logs, network traces, performance data,
+   Lighthouse audits), the proxy routes the response through a **local Ollama
+   model** and returns a compact, structured digest instead.
+2. **Screenshots → focused WebP.** `take_screenshot` is rewritten to *require* a
+   focus `region`, then the image is cropped, downscaled, and re-encoded as
+   **WebP** locally — so a visual check costs a fraction of the pixels (and
+   therefore tokens) of a full-resolution PNG.
+
+Either way, Claude's context window stays small.
 
 Claude Code only ever sees this proxy. The tool names and schemas are identical
 to the upstream server, so nothing in your workflow changes.
@@ -67,19 +74,53 @@ noisy and a digest is strictly more useful:
 | `performance_analyze_insight`  | name / impact / cause / fix                   |
 | `lighthouse_audit`             | category scores + failing audits only         |
 
-**Interaction-critical tools are never compressed** (`take_snapshot`,
-`evaluate_script`, `take_screenshot`, `click`, `fill`, …). Their output carries
-element `uid`s, structured return values, or binary image data that Claude
-needs **verbatim** to keep driving the page. Compressing them would break
-automation. Screenshots and other non-text content are always passed through
-intact, even when they ride alongside a compressed text part.
+**Interaction-critical tools are never text-compressed** (`take_snapshot`,
+`evaluate_script`, `click`, `fill`, …). Their output carries element `uid`s or
+structured return values that Claude needs **verbatim** to keep driving the
+page. Compressing them would break automation. Non-image, non-screenshot binary
+content is always passed through intact.
 
 The compressible set is fully configurable (`COMPRESSIBLE_TOOLS`).
+
+## Focused screenshots (the other big lever)
+
+Claude is billed for images by **pixel area**, not file size — so the only way
+to make a screenshot cheap is to send fewer pixels. WebP quality shrinks bytes
+(latency and the API's per-message payload limit) but **not** tokens; cropping
+and downscaling shrink tokens.
+
+The proxy rewrites the `take_screenshot` tool so Claude **must** declare a focus
+`region`, then post-processes the upstream PNG with [`sharp`](https://sharp.pixelplumbing.com):
+crop to the region → downscale to a max width → re-encode as WebP. The page is
+never resized, so there are no layout side effects.
+
+Added parameters on `take_screenshot`:
+
+| Param      | Required | Default | Effect |
+| ---------- | -------- | ------- | ------ |
+| `region`   | **yes**  | —       | `full`, `top`/`bottom`/`left`/`right` (that half), `center` (central quarter), or `top-strip`/`bottom-strip` (top/bottom 20% band, for headers/footers) |
+| `maxWidth` | no       | `1024`  | Output is downscaled to fit this width (never enlarged). **The real token lever.** |
+| `quality`  | no       | `50`    | WebP quality 1–100. Trims bytes/latency, not tokens. |
+
+The upstream `format` param is dropped (the proxy always re-encodes to WebP).
+`uid`, `fullPage`, and `filePath` still work; when `filePath` is used the image
+is written to disk by upstream and there is nothing to re-encode, so it passes
+through unchanged. A one-line note is prepended to the result so Claude knows
+the exact crop and dimensions it received.
+
+Measured on a 1920×1080 capture: a full-page PNG (~31 KB, ~2700 image tokens at
+full res) → `region: "full", maxWidth: 1024` becomes a **1024×576 WebP (~1.2 KB)**;
+`region: "top-strip"` becomes a **1024×115 WebP (~0.4 KB)** — roughly an 80–95%
+token cut versus a full-resolution screenshot. Toggle the whole behaviour with
+`OPTIMIZE_SCREENSHOTS=false`.
 
 ## Requirements
 
 - **Node.js 20+**
-- **[Ollama](https://ollama.com)** running locally
+- **[`sharp`](https://sharp.pixelplumbing.com)** (installed automatically; ships
+  prebuilt binaries — used for focused-screenshot crop/downscale/WebP)
+- **[Ollama](https://ollama.com)** running locally (only for the diagnostic-dump
+  digests; focused screenshots need no model)
 - A compression model pulled, e.g.:
   
   ```bash
@@ -102,6 +143,9 @@ npm run build    # (re)compile TypeScript → dist/
 ### Verify locally (no Claude Code needed)
 
 ```bash
+# 0. Focused-screenshot optimizer (no browser, no model):
+npm run build && npm run test:screenshot
+
 # 1. Compression quality against your local model (no browser):
 OLLAMA_MODEL=qwen3.5:9b npm run smoke
 
@@ -233,6 +277,9 @@ Point any MCP client at the built proxy:
 | `USE_FEW_SHOT` | `true` | Prepend a worked example per tool (pins the JSON shape) |
 | `OLLAMA_TIMEOUT_MS` | `120000` | Per-call model timeout |
 | `OLLAMA_KEEP_ALIVE` | `10m` | How long Ollama keeps the model in memory after the last call. Use `-1` to never unload, `5m`, `1h`, etc. Default of 10 min avoids cold-start latency mid-session. |
+| `OPTIMIZE_SCREENSHOTS` | `true` | Crop/downscale/WebP-encode `take_screenshot` output and require a focus `region`. Set `false` for stock pass-through |
+| `SCREENSHOT_MAX_WIDTH` | `1024` | Default max output width (px) for focused screenshots — the main token lever |
+| `SCREENSHOT_QUALITY` | `50` | Default WebP quality (1–100) for focused screenshots |
 | `COMPRESSIBLE_TOOLS` | *(diagnostic set above)* | Comma-separated tools to compress |
 | `ALLOWED_TOOLS` | *(all)* | If set, only these tools are exposed — cuts the persistent tool-schema cost |
 | `CACHE_TTL_MS` | `300000` | Cache lifetime for compressed results |
@@ -265,10 +312,12 @@ ALLOWED_TOOLS="navigate_page,take_snapshot,click,fill,list_console_messages,list
 .claude-plugin/marketplace.json  Local marketplace manifest (enables /plugin install)
 src/proxy.ts                    MCP server ⇄ upstream client; interception logic
 src/compressor.ts               Tool-aware, schema-constrained Ollama compression
+src/screenshot.ts               Focused-screenshot crop/downscale/WebP optimizer
 src/cache.ts                    TTL + size-bounded LRU cache
 src/config.ts                   Env-driven configuration
 skills/                         Vendored Chrome DevTools skills (Apache-2.0) + sync guide
 scripts/smoke.mjs               Offline compression test (no browser)
+scripts/screenshot.mjs          Offline focused-screenshot test (no browser)
 scripts/handshake.mjs           MCP protocol forwarding test
 scripts/e2e-browser.mjs         Full round-trip test through real Chrome
 ```

@@ -26,6 +26,13 @@ import {
 import { config, estimateTokens, log } from "./config.js";
 import { compress } from "./compressor.js";
 import { ResponseCache } from "./cache.js";
+import {
+  transformScreenshotTool,
+  upstreamScreenshotArgs,
+  optimizeScreenshotResult,
+} from "./screenshot.js";
+
+const SCREENSHOT_TOOL = "take_screenshot";
 
 const cache = new ResponseCache(config.cacheTtlMs, config.cacheMaxEntries);
 
@@ -68,11 +75,17 @@ async function main(): Promise<void> {
   } else {
     log(`exposing all ${tools.length} upstream tools`);
   }
+  // Rewrite take_screenshot so Claude must declare a focus region and the proxy
+  // can return a cropped, downscaled WebP instead of a full-resolution PNG.
+  if (config.optimizeScreenshots) {
+    tools = tools.map((t) => (t.name === SCREENSHOT_TOOL ? transformScreenshotTool(t) : t));
+  }
+
   const exposed = new Set(tools.map((t) => t.name));
 
   // 3. Build the proxy server advertising the same (filtered) tools.
   const server = new Server(
-    { name: "devtools-local-agent-proxy", version: "0.1.0" },
+    { name: "devtools-local-agent-proxy", version: "0.2.0" },
     { capabilities: { tools: {} } },
   );
 
@@ -86,6 +99,17 @@ async function main(): Promise<void> {
         isError: true,
         content: [{ type: "text", text: `Tool "${name}" is not exposed by this proxy.` }],
       };
+    }
+
+    // Focused screenshots: drive a lossless PNG from upstream, then crop +
+    // downscale + WebP-encode locally so the image stays cheap in tokens.
+    if (config.optimizeScreenshots && name === SCREENSHOT_TOOL) {
+      const result = (await upstream.callTool({
+        name,
+        arguments: upstreamScreenshotArgs(args),
+      })) as CallToolResult;
+      if (result.isError) return result;
+      return optimizeScreenshotResult(result, args);
     }
 
     // Forward to upstream untouched.

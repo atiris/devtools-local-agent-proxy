@@ -59,6 +59,11 @@ Keep this list current so re-vendoring doesn't silently clobber local edits:
   `list_network_requests`, and noted that status/latency are not filterable
   natively. When re-vendoring, re-apply this edit (or fold it into upstream's
   version if they expand that section).
+- **`chrome-devtools/SKILL.md`** — added a "Token-Saving Protocol (strict)"
+  section and a "Focused screenshots" section documenting this proxy's required
+  `region` parameter (plus `maxWidth`/`quality`) on `take_screenshot`. This is
+  proxy-specific behaviour with no upstream equivalent; re-apply after any
+  re-vendor.
 
 If you customize a skill (e.g. teaching `troubleshooting` about this proxy's
 Ollama layer and `dist/proxy.js`), note it here so a future `cp -r` doesn't

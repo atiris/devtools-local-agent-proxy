@@ -107,6 +107,16 @@ export const config = {
   // is the single biggest lever for cutting the persistent tool-schema tax.
   allowedTools: list(process.env.ALLOWED_TOOLS, []),
 
+  // --- Focused screenshots ---
+  // Crop + downscale + WebP-encode take_screenshot output so visual checks cost
+  // a fraction of the tokens. Claude is charged by pixel area, so the width cap
+  // is the real token lever; WebP quality only trims bytes (latency/payload).
+  optimizeScreenshots: bool(process.env.OPTIMIZE_SCREENSHOTS, true),
+  // Max output width in px. The image is downscaled to fit (never enlarged).
+  screenshotMaxWidth: num(process.env.SCREENSHOT_MAX_WIDTH, 1024),
+  // WebP quality 1-100 for the re-encoded screenshot.
+  screenshotQuality: num(process.env.SCREENSHOT_QUALITY, 50),
+
   // --- Cache ---
   cacheTtlMs: num(process.env.CACHE_TTL_MS, 300000),
   cacheMaxEntries: num(process.env.CACHE_MAX_ENTRIES, 100),
