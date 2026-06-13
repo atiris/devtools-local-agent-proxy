@@ -40,15 +40,27 @@ The two list tools default to high-signal rows only (this proxy narrows them); w
 - **Paginate** big result sets with `pageSize` + `pageIdx` instead of one large pull
 - **Offload bodies to disk** with the `filePath`-style params (screenshots, snapshots, traces) and `get_network_request`'s `responseFilePath`, rather than inlining them
 
-### Focused screenshots (`take_screenshot`)
+### Focused screenshots
 
-Images are billed by pixel area, so capture the smallest useful region at the lowest useful resolution. This proxy requires a focus `region` and returns a cropped, downscaled WebP:
+Images are billed by pixel area, so capture the smallest useful region at the lowest useful resolution. To inspect one component, prefer `take_element_screenshot`.
+
+**`take_element_screenshot`** — a tight, padded WebP of a single element:
+
+- **`uid`** (required): element uid from `take_snapshot`
+- **`padding`** (default 10): extra px so the element's border/focus ring is covered
+- **`maxWidth`** (default 1024), **`quality`** (default 50)
+
+The proxy measures the element, takes a full-page shot, and crops to just that element (works for tall/below-the-fold elements at any devicePixelRatio). Use it instead of `take_screenshot` whenever you care about one component.
+
+**`take_screenshot`** — page/region capture; requires a focus `region` and returns a cropped, downscaled WebP:
 
 - **`region`** (required): `full`, `top`/`bottom`/`left`/`right` (that half), `center` (central quarter), or `top-strip`/`bottom-strip` (top/bottom 20% band, for headers/footers) — pick the smallest region that answers the question
 - **`maxWidth`** (default 1024): lower it (e.g. `512`) for a layout check — fewer pixels, fewer tokens
 - **`quality`** (default 50): WebP quality; trims file size/latency, not tokens
 
 Examples: sticky header → `region: "top-strip", maxWidth: 768`; centred modal → `region: "center"`; quick full-page sanity check → `region: "full", maxWidth: 512`
+
+Any image is capped at 3000px per side. If a capture exceeds it (usually a tall full page) the proxy withholds the image and asks you to narrow — pick a region, lower `maxWidth`, or use `take_element_screenshot`
 
 ### Tool selection
 

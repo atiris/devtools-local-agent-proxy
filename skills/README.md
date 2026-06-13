@@ -57,9 +57,10 @@ Keep this list current so re-vendoring doesn't silently clobber local edits:
   prose, trimmed filler) and adapted for this proxy: a "Token-saving protocol",
   an "Efficient data retrieval" section documenting the proxy defaults
   (`minLevel`/`maxLevel` for console, `statusMin`/`statusMax` for network), and a
-  "Focused screenshots" section documenting the required `region` plus
-  `maxWidth`/`quality` on `take_screenshot`. All proxy-specific with no upstream
-  equivalent; re-apply after any re-vendor.
+  "Focused screenshots" section documenting `take_element_screenshot` (synthetic
+  proxy tool), the required `region` plus `maxWidth`/`quality` on
+  `take_screenshot`, and the 3000px-per-side cap. All proxy-specific with no
+  upstream equivalent; re-apply after any re-vendor.
 - **`debug-optimize-lcp/SKILL.md`** — Step 4 now passes `statusMin: 0,
   statusMax: 599` to `list_network_requests` so the proxy's error-only default
   doesn't hide the successful 2xx LCP resource. Re-apply after re-vendor.

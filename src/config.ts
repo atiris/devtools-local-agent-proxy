@@ -116,6 +116,14 @@ export const config = {
   screenshotMaxWidth: num(process.env.SCREENSHOT_MAX_WIDTH, 1024),
   // WebP quality 1-100 for the re-encoded screenshot.
   screenshotQuality: num(process.env.SCREENSHOT_QUALITY, 50),
+  // Hard ceiling on EITHER side of any image handed to the model. A taller
+  // capture than this (common with full-page shots) is refused with guidance to
+  // narrow the region rather than sent — large images blow the token budget and
+  // some hosts reject >8000px outright.
+  screenshotMaxSide: num(process.env.SCREENSHOT_MAX_SIDE, 3000),
+  // Extra px added around an element in take_element_screenshot so its border /
+  // focus ring is fully covered.
+  screenshotElementPadding: num(process.env.SCREENSHOT_ELEMENT_PADDING, 10),
 
   // --- Diagnostic list defaults (token-optimal narrowing) ---
   // Rewrite list_console_messages / list_network_requests so they return only

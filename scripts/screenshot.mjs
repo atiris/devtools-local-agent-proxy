@@ -13,6 +13,9 @@ import sharp from "sharp";
 import {
   optimizeScreenshotResult,
   transformScreenshotTool,
+  enforceImageCap,
+  elementScreenshotTool,
+  takeElementScreenshot,
 } from "../dist/screenshot.js";
 
 let failures = 0;
@@ -90,6 +93,59 @@ const noImg = await optimizeScreenshotResult(
   { region: "full" },
 );
 check(noImg.content.length === 1 && noImg.content[0].type === "text", "no-image result passed through");
+
+// --- per-side cap ---------------------------------------------------------
+const tallPng = await sharp({ create: { width: 1500, height: 9000, channels: 3, background: "#246" } })
+  .png().toBuffer();
+const tallRes = {
+  content: [
+    { type: "text", text: "shot" },
+    { type: "image", data: tallPng.toString("base64"), mimeType: "image/png" },
+  ],
+};
+const capped = await optimizeScreenshotResult(tallRes, { region: "full", maxWidth: 1024 });
+check(!capped.content.some((c) => c.type === "image"), "over-cap full-page image withheld (no image returned)");
+check(capped.content[0].text.includes("withheld") && capped.content[0].text.includes("3000px"), "withheld message explains the cap + remedies");
+
+const wide = await sharp({ create: { width: 4000, height: 100, channels: 3, background: "#246" } }).png().toBuffer();
+const wideRes = { content: [{ type: "image", data: wide.toString("base64"), mimeType: "image/png" }] };
+const wideCap = await enforceImageCap(wideRes);
+check(!wideCap.content.some((c) => c.type === "image"), "enforceImageCap withholds an over-wide pass-through image");
+
+const okSmall = await enforceImageCap({ content: [{ type: "image", data: (await sharp({ create: { width: 800, height: 600, channels: 3, background: "#246" } }).png().toBuffer()).toString("base64"), mimeType: "image/png" }] });
+check(okSmall.content.some((c) => c.type === "image"), "enforceImageCap leaves an in-range image intact");
+
+// --- element screenshot ---------------------------------------------------
+const eTool = elementScreenshotTool();
+check(eTool.name === "take_element_screenshot" && eTool.inputSchema.required.includes("uid"), "element tool requires uid");
+
+// Mock upstream: evaluate_script returns the box, take_screenshot returns a full-page PNG.
+const pagePng = await sharp({ create: { width: 1000, height: 5000, channels: 3, background: "#135" } }).png().toBuffer();
+const mockCall = (box) => async (name) => {
+  if (name === "evaluate_script")
+    return { content: [{ type: "text", text: "Script ran on page and returned:\n```json\n" + JSON.stringify(box) + "\n```" }] };
+  if (name === "take_screenshot")
+    return { content: [{ type: "text", text: "ok" }, { type: "image", data: pagePng.toString("base64"), mimeType: "image/png" }] };
+  throw new Error("unexpected " + name);
+};
+
+const elBox = { x: 100, y: 200, w: 300, h: 150, docW: 1000, docH: 5000 };
+const elRes = await takeElementScreenshot(mockCall(elBox), { uid: "el-1", padding: 10 });
+const elImg = elRes.content.find((c) => c.type === "image");
+check(!!elImg, "element screenshot returns an image");
+const elMeta = await sharp(Buffer.from(elImg.data, "base64")).metadata();
+check(elMeta.format === "webp", "element output is webp");
+// scale = 1; crop = (w+2*pad) x (h+2*pad) = 320 x 170
+check(elMeta.width === 320 && elMeta.height === 170, `element crop = element+padding (got ${elMeta.width}x${elMeta.height})`);
+check(elRes.content[0].text.includes("uid=el-1") && elRes.content[0].text.includes("+10px"), "element note describes uid + padding");
+
+const noUid = await takeElementScreenshot(mockCall(elBox), {});
+check(noUid.isError && noUid.content[0].text.includes("uid"), "missing uid errors with guidance");
+
+const hugeBox = { x: 50, y: 100, w: 300, h: 4000, docW: 1000, docH: 5000 };
+const hugeRes = await takeElementScreenshot(mockCall(hugeBox), { uid: "el-big", padding: 10 });
+check(!hugeRes.content.some((c) => c.type === "image"), "over-cap element withheld");
+check(hugeRes.content[0].text.includes("withheld"), "over-cap element returns guidance");
 
 process.stdout.write(failures ? `\n${failures} CHECK(S) FAILED\n` : "\nALL CHECKS PASSED\n");
 process.exit(failures ? 1 : 0);

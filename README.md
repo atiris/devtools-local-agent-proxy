@@ -152,6 +152,42 @@ full res) → `region: "full", maxWidth: 1024` becomes a **1024×576 WebP (~1.2 
 token cut versus a full-resolution screenshot. Toggle the whole behaviour with
 `OPTIMIZE_SCREENSHOTS=false`.
 
+### Hard per-side cap
+
+No image handed to Claude may exceed `SCREENSHOT_MAX_SIDE` px (default **3000**)
+on either side. This mainly catches tall full-page captures: even after a width
+downscale, a long page stays thousands of px tall. Rather than send a giant
+image (which blows the token budget and which some hosts reject outright), the
+proxy **withholds it** and returns guidance instead — pick a focus region, lower
+`maxWidth`, use `take_element_screenshot`, or `resize_page`/`fullPage:false`. The
+cap is enforced even when `OPTIMIZE_SCREENSHOTS=false`.
+
+### `take_element_screenshot` (by uid, padded, fully covered)
+
+A synthetic tool the proxy adds: hand it the `uid` of an element from
+`take_snapshot` and it returns a tight WebP of **just that element**, padded so
+the whole thing (border, focus ring) is covered. Far cheaper than a page shot
+when you only need to inspect one component.
+
+How it works: the proxy resolves the element's geometry via `evaluate_script`
+(passing the uid), takes a full-page PNG so even tall/below-the-fold elements are
+covered, then crops to the element's box expanded by `padding`, downscales, and
+WebP-encodes. Scale is calibrated from the captured image vs document size, so it
+is correct at any `devicePixelRatio`.
+
+| Param      | Required | Default | Effect |
+| ---------- | -------- | ------- | ------ |
+| `uid`      | **yes**  | —       | Element uid from `take_snapshot` |
+| `padding`  | no       | `10`    | Extra px around the element (`SCREENSHOT_ELEMENT_PADDING`) |
+| `maxWidth` | no       | `1024`  | Downscale to fit this width |
+| `quality`  | no       | `50`    | WebP quality 1–100 |
+
+If the element is larger than the per-side cap, the image is withheld with
+guidance (screenshot a child element instead). An invalid/stale uid returns a
+clear error telling Claude to take a fresh snapshot. Verified end-to-end against
+real Chrome (`scripts/e2e-element.mjs`): a 200×100 button → a 220×120 WebP
+covering exactly the element plus 10px.
+
 ## Requirements
 
 - **Node.js 20+**
@@ -192,6 +228,9 @@ node scripts/handshake.mjs
 
 # 3. Full round-trip through a REAL browser (opens Chrome, needs the model):
 OLLAMA_MODEL=qwen3.5:9b node scripts/e2e-browser.mjs
+
+# 4. take_element_screenshot through a REAL browser (opens Chrome, no model):
+node scripts/e2e-element.mjs
 ```
 
 ```ps
@@ -321,6 +360,8 @@ Point any MCP client at the built proxy:
 | `OPTIMIZE_SCREENSHOTS` | `true` | Crop/downscale/WebP-encode `take_screenshot` output and require a focus `region`. Set `false` for stock pass-through |
 | `SCREENSHOT_MAX_WIDTH` | `1024` | Default max output width (px) for focused screenshots — the main token lever |
 | `SCREENSHOT_QUALITY` | `50` | Default WebP quality (1–100) for focused screenshots |
+| `SCREENSHOT_MAX_SIDE` | `3000` | Hard cap on either side of any image sent to Claude; larger images are withheld with guidance |
+| `SCREENSHOT_ELEMENT_PADDING` | `10` | Default px of padding around an element in `take_element_screenshot` |
 | `COMPRESSIBLE_TOOLS` | *(diagnostic set above)* | Comma-separated tools to compress |
 | `ALLOWED_TOOLS` | *(all)* | If set, only these tools are exposed — cuts the persistent tool-schema cost |
 | `CACHE_TTL_MS` | `300000` | Cache lifetime for compressed results |
@@ -363,6 +404,7 @@ scripts/screenshot.mjs          Offline focused-screenshot test (no browser)
 scripts/diagnostics.mjs         Offline console/network filter test (no browser)
 scripts/handshake.mjs           MCP protocol forwarding test
 scripts/e2e-browser.mjs         Full round-trip test through real Chrome
+scripts/e2e-element.mjs         take_element_screenshot test through real Chrome
 ```
 
 ## License

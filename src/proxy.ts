@@ -30,6 +30,10 @@ import {
   transformScreenshotTool,
   upstreamScreenshotArgs,
   optimizeScreenshotResult,
+  enforceImageCap,
+  elementScreenshotTool,
+  takeElementScreenshot,
+  ELEMENT_SCREENSHOT_TOOL,
 } from "./screenshot.js";
 import {
   transformConsoleTool,
@@ -84,9 +88,13 @@ async function main(): Promise<void> {
     log(`exposing all ${tools.length} upstream tools`);
   }
   // Rewrite take_screenshot so Claude must declare a focus region and the proxy
-  // can return a cropped, downscaled WebP instead of a full-resolution PNG.
+  // can return a cropped, downscaled WebP instead of a full-resolution PNG, and
+  // add the synthetic take_element_screenshot tool.
   if (config.optimizeScreenshots) {
     tools = tools.map((t) => (t.name === SCREENSHOT_TOOL ? transformScreenshotTool(t) : t));
+    if (!tools.some((t) => t.name === ELEMENT_SCREENSHOT_TOOL)) {
+      tools = [...tools, elementScreenshotTool()];
+    }
   }
   // Rewrite the firehose list tools so they default to high-signal rows only.
   if (config.optimizeDiagnostics) {
@@ -103,7 +111,7 @@ async function main(): Promise<void> {
 
   // 3. Build the proxy server advertising the same (filtered) tools.
   const server = new Server(
-    { name: "devtools-local-agent-proxy", version: "0.3.0" },
+    { name: "devtools-local-agent-proxy", version: "0.4.0" },
     { capabilities: { tools: {} } },
   );
 
@@ -119,15 +127,28 @@ async function main(): Promise<void> {
       };
     }
 
+    // Element screenshot: synthetic tool — resolve the uid's geometry, take a
+    // full-page shot, and return just the padded element. Never forwarded.
+    if (config.optimizeScreenshots && name === ELEMENT_SCREENSHOT_TOOL) {
+      return takeElementScreenshot(
+        (n, a) => upstream.callTool({ name: n, arguments: a }) as Promise<CallToolResult>,
+        args,
+      );
+    }
+
     // Focused screenshots: drive a lossless PNG from upstream, then crop +
     // downscale + WebP-encode locally so the image stays cheap in tokens.
-    if (config.optimizeScreenshots && name === SCREENSHOT_TOOL) {
+    if (name === SCREENSHOT_TOOL) {
       const result = (await upstream.callTool({
         name,
-        arguments: upstreamScreenshotArgs(args),
+        arguments: config.optimizeScreenshots ? upstreamScreenshotArgs(args) : args,
       })) as CallToolResult;
       if (result.isError) return result;
-      return optimizeScreenshotResult(result, args);
+      // Optimize (which includes the cap) when on; otherwise still enforce the
+      // hard per-side cap so the model never receives an oversized image.
+      return config.optimizeScreenshots
+        ? optimizeScreenshotResult(result, args)
+        : enforceImageCap(result);
     }
 
     // Console: translate the severity band into upstream's native `types`
