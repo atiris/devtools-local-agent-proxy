@@ -193,8 +193,9 @@ covering exactly the element plus 10px.
 - **Node.js 20+**
 - **[`sharp`](https://sharp.pixelplumbing.com)** (installed automatically; ships
   prebuilt binaries — used for focused-screenshot crop/downscale/WebP)
-- **[Ollama](https://ollama.com)** running locally (only for the diagnostic-dump
-  digests; focused screenshots need no model)
+- **[Ollama](https://ollama.com)** running locally — **optional**, only for the
+  diagnostic-dump digests. The screenshot and list-filter optimizations need no
+  model. If you don't configure a model the proxy still runs (see below).
 - A compression model pulled, e.g.:
   
   ```bash
@@ -204,6 +205,20 @@ covering exactly the element plus 10px.
   Any Ollama model that supports structured output works (`qwen3:8b`,
   `qwen2.5-coder:7b`, `llama3.1:8b`, …). Stronger models extract more
   faithfully; pick one that fits your VRAM.
+
+### Running without a model (pass-through mode)
+
+**If `OLLAMA_MODEL` is unset or empty, LLM compression is disabled** and the
+proxy runs as a pure pass-through for diagnostic dumps — nothing is sent to
+Ollama, so no model and no Ollama server are required. The token-saving features
+that don't need a model still apply: the rewritten `take_screenshot` /
+`take_element_screenshot` (crop + downscale + WebP + per-side cap) and the
+`list_console_messages` / `list_network_requests` high-signal defaults.
+
+This is the lightest setup if you only want the screenshot and list
+optimizations. To get the diagnostic-dump digests too, set `OLLAMA_MODEL`
+(the bundled plugin defaults it to `qwen3.5:9b`). Pass-through is logged at
+startup as `LLM compression OFF (OLLAMA_MODEL unset/empty) — pass-through mode`.
 
 ## Install & build
 
@@ -343,7 +358,7 @@ Point any MCP client at the built proxy:
 | Variable | Default | Description |
 | --- | --- | --- |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama host |
-| `OLLAMA_MODEL` | `qwen3.5:9b` | Compression model |
+| `OLLAMA_MODEL` | *(none)* | Compression model. **Unset or empty ⇒ LLM compression off (pass-through); no Ollama needed.** The bundled plugin sets `qwen3.5:9b` |
 | `OLLAMA_NUM_CTX` | `16384` | **Context window — must exceed input+output or the dump is truncated.** Raise for very large dumps (uses more VRAM) |
 | `COMPRESSION_THRESHOLD_TOKENS` | `2000` | Responses larger than this (≈ chars/4) get compressed |
 | `MAX_COMPRESSED_TOKENS` | `2000` | Generation budget (`num_predict`); the digest itself stays tiny |

@@ -53,12 +53,17 @@ const numCtx = num(process.env.OLLAMA_NUM_CTX, 24576);
  */
 const derivedMaxInputChars = Math.max(8000, Math.floor((numCtx - 3500) * 2.2));
 
+// No default model: if OLLAMA_MODEL is unset or empty, LLM compression is off
+// and the proxy runs as a pure pass-through (screenshot/list optimizations still
+// apply — they need no model).
+const ollamaModel = (process.env.OLLAMA_MODEL ?? "").trim();
+
 export const config = {
   // --- Local model (Ollama native API) ---
   ollamaBaseUrl: (
     process.env.OLLAMA_BASE_URL ?? "http://localhost:11434"
   ).replace(/\/$/, ""),
-  ollamaModel: process.env.OLLAMA_MODEL ?? "qwen3.5:9b",
+  ollamaModel,
 
   // --- Compression behaviour ---
   // Responses estimated larger than this (tokens ≈ chars/4) get compressed.
@@ -144,8 +149,9 @@ export const config = {
   cacheMaxEntries: num(process.env.CACHE_MAX_ENTRIES, 100),
 
   // --- Escape hatches ---
-  // Turn off compression entirely (pure pass-through) for debugging.
-  disableCompression: bool(process.env.DISABLE_COMPRESSION, false),
+  // Turn off LLM compression entirely (pure pass-through). Forced ON whenever no
+  // model is configured (OLLAMA_MODEL unset/empty), or via DISABLE_COMPRESSION.
+  disableCompression: ollamaModel === "" || bool(process.env.DISABLE_COMPRESSION, false),
   // On model failure: "original" (safe, returns raw) or "truncate" (returns a
   // hard-truncated slice + note). Default keeps correctness over savings.
   fallbackOnError:

@@ -87,6 +87,13 @@ async function main(): Promise<void> {
   } else {
     log(`exposing all ${tools.length} upstream tools`);
   }
+  log(
+    config.disableCompression
+      ? config.ollamaModel === ""
+        ? "LLM compression OFF (OLLAMA_MODEL unset/empty) — pass-through mode"
+        : "LLM compression OFF (DISABLE_COMPRESSION)"
+      : `LLM compression ON via ${config.ollamaModel}`,
+  );
   // Rewrite take_screenshot so Claude must declare a focus region and the proxy
   // can return a cropped, downscaled WebP instead of a full-resolution PNG, and
   // add the synthetic take_element_screenshot tool.
@@ -111,7 +118,7 @@ async function main(): Promise<void> {
 
   // 3. Build the proxy server advertising the same (filtered) tools.
   const server = new Server(
-    { name: "devtools-local-agent-proxy", version: "0.4.0" },
+    { name: "devtools-local-agent-proxy", version: "0.5.0" },
     { capabilities: { tools: {} } },
   );
 
