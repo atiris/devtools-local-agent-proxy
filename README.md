@@ -3,16 +3,19 @@
 A Claude Code **plugin** that keeps token usage low during browser e2e testing.
 
 It wraps [`chrome-devtools-mcp`](https://github.com/ChromeDevTools/chrome-devtools-mcp)
-with a transparent MCP proxy. It cuts token usage two ways:
+with a transparent MCP proxy. It cuts token usage three ways:
 
-1. **Diagnostic dumps → local digest.** When a **read-only diagnostic tool**
-   returns a large dump (console logs, network traces, performance data,
-   Lighthouse audits), the proxy routes the response through a **local Ollama
-   model** and returns a compact, structured digest instead.
+1. **Firehose list tools → high-signal defaults.** `list_console_messages` and
+   `list_network_requests` return *everything* by default. The proxy rewrites
+   them so they default to only what matters — console `warn`..`error`, network
+   status `400`–`599` plus failed requests — and makes Claude opt in to more.
 2. **Screenshots → focused WebP.** `take_screenshot` is rewritten to *require* a
    focus `region`, then the image is cropped, downscaled, and re-encoded as
    **WebP** locally — so a visual check costs a fraction of the pixels (and
    therefore tokens) of a full-resolution PNG.
+3. **Big diagnostic dumps → local digest.** Whatever still comes back large
+   (network traces, performance data, Lighthouse audits) is routed through a
+   **local Ollama model** and returned as a compact, structured digest.
 
 Either way, Claude's context window stays small.
 
@@ -82,6 +85,41 @@ content is always passed through intact.
 
 The compressible set is fully configurable (`COMPRESSIBLE_TOOLS`).
 
+## Token-optimal list defaults
+
+The two firehose tools are rewritten so they return high-signal rows by default
+and force Claude to widen explicitly. Both transforms run *before* (and feed)
+the Ollama compression stage above.
+
+**`list_console_messages`** — a severity band, default `warn`..`error`:
+
+| Param      | Default | Effect |
+| ---------- | ------- | ------ |
+| `minLevel` | `warn`  | Lowest severity to include (`debug` < `info` < `warn` < `error`) |
+| `maxLevel` | `error` | Highest severity to include |
+
+The band is translated to upstream's native `types` filter (lossless — no
+parsing). `minLevel: "debug"` returns everything; an explicit `types: [...]`
+array is honored as an advanced override.
+
+**`list_network_requests`** — an HTTP status band, default `400`–`599`:
+
+| Param       | Default | Effect |
+| ----------- | ------- | ------ |
+| `statusMin` | `400`   | Lowest status to include |
+| `statusMax` | `599`   | Highest status to include |
+
+Upstream cannot filter by status, so the proxy post-filters the request lines:
+numeric statuses must fall in `[statusMin, statusMax]`; **failed requests**
+(`net::ERR_*`, `pending`) are kept whenever the band reaches into errors
+(`statusMax ≥ 400`), since a failed request is the most important kind. The
+pagination header is replaced with a `kept of total` summary. `statusMin: 0,
+statusMax: 599` returns everything; combine with `resourceTypes` to also skip
+images/fonts. Toggle both with `OPTIMIZE_DIAGNOSTICS=false`.
+
+> When you need successful resources (e.g. LCP image/font timing), widen the
+> band — the bundled `debug-optimize-lcp` skill already does this.
+
 ## Focused screenshots (the other big lever)
 
 Claude is billed for images by **pixel area**, not file size — so the only way
@@ -143,8 +181,8 @@ npm run build    # (re)compile TypeScript → dist/
 ### Verify locally (no Claude Code needed)
 
 ```bash
-# 0. Focused-screenshot optimizer (no browser, no model):
-npm run build && npm run test:screenshot
+# 0. Focused screenshots + list filters (no browser, no model):
+npm run build && npm run test:screenshot && npm run test:diagnostics
 
 # 1. Compression quality against your local model (no browser):
 OLLAMA_MODEL=qwen3.5:9b npm run smoke
@@ -277,6 +315,9 @@ Point any MCP client at the built proxy:
 | `USE_FEW_SHOT` | `true` | Prepend a worked example per tool (pins the JSON shape) |
 | `OLLAMA_TIMEOUT_MS` | `120000` | Per-call model timeout |
 | `OLLAMA_KEEP_ALIVE` | `10m` | How long Ollama keeps the model in memory after the last call. Use `-1` to never unload, `5m`, `1h`, etc. Default of 10 min avoids cold-start latency mid-session. |
+| `OPTIMIZE_DIAGNOSTICS` | `true` | Rewrite `list_console_messages`/`list_network_requests` with high-signal defaults. Set `false` for stock pass-through |
+| `CONSOLE_MIN_LEVEL` / `CONSOLE_MAX_LEVEL` | `warn` / `error` | Default console severity band (`debug`<`info`<`warn`<`error`) |
+| `NETWORK_STATUS_MIN` / `NETWORK_STATUS_MAX` | `400` / `599` | Default network HTTP status band |
 | `OPTIMIZE_SCREENSHOTS` | `true` | Crop/downscale/WebP-encode `take_screenshot` output and require a focus `region`. Set `false` for stock pass-through |
 | `SCREENSHOT_MAX_WIDTH` | `1024` | Default max output width (px) for focused screenshots — the main token lever |
 | `SCREENSHOT_QUALITY` | `50` | Default WebP quality (1–100) for focused screenshots |
@@ -313,11 +354,13 @@ ALLOWED_TOOLS="navigate_page,take_snapshot,click,fill,list_console_messages,list
 src/proxy.ts                    MCP server ⇄ upstream client; interception logic
 src/compressor.ts               Tool-aware, schema-constrained Ollama compression
 src/screenshot.ts               Focused-screenshot crop/downscale/WebP optimizer
+src/diagnostics.ts              Console severity + network status list filters
 src/cache.ts                    TTL + size-bounded LRU cache
 src/config.ts                   Env-driven configuration
 skills/                         Vendored Chrome DevTools skills (Apache-2.0) + sync guide
 scripts/smoke.mjs               Offline compression test (no browser)
 scripts/screenshot.mjs          Offline focused-screenshot test (no browser)
+scripts/diagnostics.mjs         Offline console/network filter test (no browser)
 scripts/handshake.mjs           MCP protocol forwarding test
 scripts/e2e-browser.mjs         Full round-trip test through real Chrome
 ```

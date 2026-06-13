@@ -1,6 +1,6 @@
 {
   "name": "devtools-local-agent-proxy",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A token-saving MCP proxy that wraps chrome-devtools-mcp: compresses large diagnostic dumps with a local Ollama model and returns focused, downscaled WebP screenshots before they reach Claude Code.",
   "type": "module",
   "bin": {
@@ -12,7 +12,8 @@
     "dev": "tsx src/proxy.ts",
     "prepare": "tsc",
     "smoke": "node scripts/smoke.mjs",
-    "test:screenshot": "node scripts/screenshot.mjs"
+    "test:screenshot": "node scripts/screenshot.mjs",
+    "test:diagnostics": "node scripts/diagnostics.mjs"
   },
   "engines": {
     "node": ">=20"

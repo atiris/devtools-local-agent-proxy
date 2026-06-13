@@ -117,6 +117,20 @@ export const config = {
   // WebP quality 1-100 for the re-encoded screenshot.
   screenshotQuality: num(process.env.SCREENSHOT_QUALITY, 50),
 
+  // --- Diagnostic list defaults (token-optimal narrowing) ---
+  // Rewrite list_console_messages / list_network_requests so they return only
+  // high-signal rows by default, and force Claude to opt in to more.
+  optimizeDiagnostics: bool(process.env.OPTIMIZE_DIAGNOSTICS, true),
+  // Console severity band (debug < info < warn < error). Default warn..error.
+  consoleMinLevel: (process.env.CONSOLE_MIN_LEVEL ?? "warn") as
+    | "debug" | "info" | "warn" | "error",
+  consoleMaxLevel: (process.env.CONSOLE_MAX_LEVEL ?? "error") as
+    | "debug" | "info" | "warn" | "error",
+  // Network HTTP status band. Default 400..599 (client + server errors); failed
+  // requests are always kept when the band reaches into errors.
+  networkStatusMin: num(process.env.NETWORK_STATUS_MIN, 400),
+  networkStatusMax: num(process.env.NETWORK_STATUS_MAX, 599),
+
   // --- Cache ---
   cacheTtlMs: num(process.env.CACHE_TTL_MS, 300000),
   cacheMaxEntries: num(process.env.CACHE_MAX_ENTRIES, 100),

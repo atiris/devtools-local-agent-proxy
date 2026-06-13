@@ -31,8 +31,16 @@ import {
   upstreamScreenshotArgs,
   optimizeScreenshotResult,
 } from "./screenshot.js";
+import {
+  transformConsoleTool,
+  consoleUpstreamArgs,
+  transformNetworkTool,
+  filterNetworkResult,
+} from "./diagnostics.js";
 
 const SCREENSHOT_TOOL = "take_screenshot";
+const CONSOLE_TOOL = "list_console_messages";
+const NETWORK_TOOL = "list_network_requests";
 
 const cache = new ResponseCache(config.cacheTtlMs, config.cacheMaxEntries);
 
@@ -80,12 +88,22 @@ async function main(): Promise<void> {
   if (config.optimizeScreenshots) {
     tools = tools.map((t) => (t.name === SCREENSHOT_TOOL ? transformScreenshotTool(t) : t));
   }
+  // Rewrite the firehose list tools so they default to high-signal rows only.
+  if (config.optimizeDiagnostics) {
+    tools = tools.map((t) =>
+      t.name === CONSOLE_TOOL
+        ? transformConsoleTool(t)
+        : t.name === NETWORK_TOOL
+          ? transformNetworkTool(t)
+          : t,
+    );
+  }
 
   const exposed = new Set(tools.map((t) => t.name));
 
   // 3. Build the proxy server advertising the same (filtered) tools.
   const server = new Server(
-    { name: "devtools-local-agent-proxy", version: "0.2.0" },
+    { name: "devtools-local-agent-proxy", version: "0.3.0" },
     { capabilities: { tools: {} } },
   );
 
@@ -112,11 +130,22 @@ async function main(): Promise<void> {
       return optimizeScreenshotResult(result, args);
     }
 
-    // Forward to upstream untouched.
-    const result = (await upstream.callTool({
+    // Console: translate the severity band into upstream's native `types`
+    // filter so only the requested levels (default warn..error) come back.
+    const upstreamArgs =
+      config.optimizeDiagnostics && name === CONSOLE_TOOL ? consoleUpstreamArgs(args) : args;
+
+    // Forward to upstream.
+    let result = (await upstream.callTool({
       name,
-      arguments: args,
+      arguments: upstreamArgs,
     })) as CallToolResult;
+
+    // Network: upstream cannot filter by status, so narrow the result to the
+    // requested status band (default 400..599) here before anything else.
+    if (config.optimizeDiagnostics && name === NETWORK_TOOL && !result.isError) {
+      result = filterNetworkResult(result, args);
+    }
 
     // Decide whether to compress.
     const compressible =

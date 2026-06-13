@@ -53,17 +53,16 @@ cp -r "$SRC/." ./skills/
 
 Keep this list current so re-vendoring doesn't silently clobber local edits:
 
-- **`chrome-devtools/SKILL.md`** — strengthened the "Efficient data retrieval"
-  section to direct Claude to default to `types: ["error","warn"]` on
-  `list_console_messages`, use `resourceTypes` + pagination on
-  `list_network_requests`, and noted that status/latency are not filterable
-  natively. When re-vendoring, re-apply this edit (or fold it into upstream's
-  version if they expand that section).
-- **`chrome-devtools/SKILL.md`** — added a "Token-Saving Protocol (strict)"
-  section and a "Focused screenshots" section documenting this proxy's required
-  `region` parameter (plus `maxWidth`/`quality`) on `take_screenshot`. This is
-  proxy-specific behaviour with no upstream equivalent; re-apply after any
-  re-vendor.
+- **`chrome-devtools/SKILL.md`** — rewritten terser (no trailing periods on
+  prose, trimmed filler) and adapted for this proxy: a "Token-saving protocol",
+  an "Efficient data retrieval" section documenting the proxy defaults
+  (`minLevel`/`maxLevel` for console, `statusMin`/`statusMax` for network), and a
+  "Focused screenshots" section documenting the required `region` plus
+  `maxWidth`/`quality` on `take_screenshot`. All proxy-specific with no upstream
+  equivalent; re-apply after any re-vendor.
+- **`debug-optimize-lcp/SKILL.md`** — Step 4 now passes `statusMin: 0,
+  statusMax: 599` to `list_network_requests` so the proxy's error-only default
+  doesn't hide the successful 2xx LCP resource. Re-apply after re-vendor.
 
 If you customize a skill (e.g. teaching `troubleshooting` about this proxy's
 Ollama layer and `dist/proxy.js`), note it here so a future `cp -r` doesn't
